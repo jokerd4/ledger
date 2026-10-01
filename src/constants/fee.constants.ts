@@ -1,0 +1,20 @@
+/**
+ * Financial fee and tariff constants using Basis Points (BPS).
+ * 1 BPS = 0.01% = 0.0001
+ * 10 000 BPS = 100.00%
+ */
+
+export const BPS_DIVISOR = 10_000n;
+
+export const DEFAULT_FEES = {
+  PLATFORM_TOTAL_BPS: 1000n,
+  PROVIDER_BPS: 300n,
+  AFFILIATE_PROVIDER_1_BPS: 100n,
+  AFFILIATE_PROVIDER_2_BPS: 50n,
+  AFFILIATE_MERCHANT_1_BPS: 150n,
+  AFFILIATE_MERCHANT_2_BPS: 100n,
+  ROLLING_RESERVE_BPS: 500n,
+  VAT_BPS: 2000n,
+  TECH_FEE_AMOUNT: 40n,
+  PAYOUT_FIXED_FEE: 200n,
+} as const;

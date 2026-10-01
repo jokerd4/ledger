@@ -1,0 +1,45 @@
+{
+  "name": "payment-core-ledger",
+  "version": "1.0.0",
+  "description": "High-throughput, double-entry financial ledger service with strict ACID guarantees and deadlock prevention",
+  "author": "",
+  "private": true,
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "bun run src/main.ts",
+    "start:dev": "bun --watch src/main.ts",
+    "seed": "bun run src/database/seed.ts",
+    "typeorm": "typeorm -d src/config/typeorm.config.ts",
+    "migration:generate": "typeorm migration:generate -d src/config/typeorm.config.ts",
+    "migration:run": "typeorm migration:run -d src/config/typeorm.config.ts",
+    "migration:revert": "typeorm migration:revert -d src/config/typeorm.config.ts",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.3.3",
+    "@nestjs/config": "^12.0.1",
+    "@nestjs/core": "^10.3.3",
+    "@nestjs/platform-express": "^10.3.3",
+    "@nestjs/swagger": "^7.3.0",
+    "@nestjs/typeorm": "^10.0.2",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "dotenv": "^16.4.5",
+    "pg": "^8.11.3",
+    "reflect-metadata": "^0.2.1",
+    "rxjs": "^7.8.1",
+    "swagger-ui-express": "^5.0.0",
+    "typeorm": "^0.3.20",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "@types/pg": "^8.11.2",
+    "@types/swagger-ui-express": "^4.1.6",
+    "@types/uuid": "^9.0.8",
+    "bun-types": "^1.0.30",
+    "typescript": "^5.3.3"
+  }
+}
