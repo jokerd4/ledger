@@ -166,7 +166,7 @@ export function ApiGetAccountStatement() {
     ApiQuery({
       name: 'limit',
       required: false,
-      description: 'Maximum number of recent postings to return (defaults to 50)',
+      description: 'Maximum number of recent postings to return (defaults to 50, maximum 100)',
       example: 50,
     }),
     ApiResponse({

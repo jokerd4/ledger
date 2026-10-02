@@ -3,6 +3,7 @@ import { IsString, IsNotEmpty, IsArray, ValidateNested, IsOptional } from 'class
 import { Type } from 'class-transformer';
 import { TransactionType } from '../enums/transaction-type.enum';
 import { PostingInstructionDto } from './posting-instruction.dto';
+import { IExecutePaymentCommand } from '../interfaces/execute-payment-command.interface';
 
 export class ExecutePaymentDto {
   @ApiProperty({
@@ -38,4 +39,20 @@ export class ExecutePaymentDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  toCommand(): IExecutePaymentCommand {
+    return {
+      idempotencyKey: this.idempotencyKey,
+      transactionType: this.transactionType,
+      description: this.description,
+      postings: this.postings.map((p) => ({
+        sequenceNumber: p.sequenceNumber,
+        debitAccountId: p.debitAccountId,
+        creditAccountId: p.creditAccountId,
+        amount: BigInt(p.amount),
+        currency: p.currency,
+      })),
+    };
+  }
 }
+

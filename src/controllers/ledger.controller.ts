@@ -9,6 +9,7 @@ import {
 import { ExecutePaymentDto } from '../dto/execute-payment.dto';
 import { PayInDto } from '../dto/pay-in.dto';
 import { PayOutDto } from '../dto/pay-out.dto';
+import { GetStatementQueryDto } from '../dto/get-statement-query.dto';
 import {
   ApiExecutePayIn,
   ApiExecutePayOut,
@@ -47,20 +48,7 @@ export class LedgerController {
   @HttpCode(HttpStatus.OK)
   @ApiExecuteTransaction()
   async executeTransaction(@Body() dto: ExecutePaymentDto) {
-    const postings = dto.postings.map((p) => ({
-      sequenceNumber: p.sequenceNumber,
-      debitAccountId: p.debitAccountId,
-      creditAccountId: p.creditAccountId,
-      amount: BigInt(p.amount),
-      currency: p.currency,
-    }));
-
-    return this.ledgerService.executeTransaction({
-      idempotencyKey: dto.idempotencyKey,
-      transactionType: dto.transactionType,
-      postings,
-      description: dto.description,
-    });
+    return this.ledgerService.executeTransaction(dto.toCommand());
   }
 
   @Get('transactions/:identifier')
@@ -79,16 +67,9 @@ export class LedgerController {
   @ApiGetAccountStatement()
   async getAccountStatement(
     @Param('id') id: string,
-    @Query('limit') limit?: string
+    @Query() query: GetStatementQueryDto,
   ) {
-    let parsedLimit: number | undefined;
-    if (limit) {
-      const num = parseInt(limit, 10);
-      if (Number.isInteger(num) && num > 0) {
-        parsedLimit = Math.min(num, 500);
-      }
-    }
-    return this.accountService.getAccountStatement(id, parsedLimit);
+    return this.accountService.getAccountStatement(id, query.limit);
   }
 
   @Get('reconcile')
