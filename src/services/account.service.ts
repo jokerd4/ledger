@@ -1,6 +1,5 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { AccountBucketingService } from './account-bucketing.service';
 import { IAccountResponse } from '../interfaces/account-response.interface';
 import { IAccountStatementItem } from '../interfaces/account-statement-item.interface';
 import { DEFAULT_STATEMENT_LIMIT } from '../constants/ledger.constants';
@@ -12,7 +11,6 @@ export class AccountService {
 
   constructor(
     private readonly dataSource: DataSource,
-    private readonly bucketingService: AccountBucketingService,
   ) {}
 
   isUuid(value: string): boolean {
@@ -99,11 +97,6 @@ export class AccountService {
     }
 
     const account = rows[0];
-    let groupBalance = null;
-
-    if (account.bucket_group) {
-      groupBalance = await this.bucketingService.getConsolidatedGroupBalance(account.bucket_group);
-    }
 
     return {
       id: account.id,
@@ -113,7 +106,7 @@ export class AccountService {
       balance: account.balance.toString(),
       allowNegative: account.allow_negative,
       bucketGroup: account.bucket_group,
-      consolidatedGroupBalance: groupBalance?.totalBalance.toString() ?? null,
+      consolidatedGroupBalance: null,
       updatedAt: account.updated_at,
     };
   }

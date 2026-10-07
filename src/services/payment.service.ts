@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { LedgerService } from './ledger.service';
-import { AccountBucketingService } from './account-bucketing.service';
 import { PayInDto } from '../dto/pay-in.dto';
 import { PayOutDto } from '../dto/pay-out.dto';
 import { IPaymentExecutionResult } from '../interfaces/payment-execution-result.interface';
@@ -12,7 +11,6 @@ import { DEFAULT_FEES, BPS_DIVISOR } from '../constants/fee.constants';
 export class PaymentService {
   constructor(
     private readonly ledgerService: LedgerService,
-    private readonly bucketingService: AccountBucketingService,
   ) {}
 
   // Constructs and executes canonical 14-posting Pay-In chain.
@@ -20,10 +18,7 @@ export class PaymentService {
     const grossAmount = BigInt(dto.amount);
     const currency = dto.currency.toUpperCase();
 
-    const revenueAccountId = await this.bucketingService.getRevenueBucketAccountId(
-      currency,
-      dto.idempotencyKey
-    );
+    const revenueAccountId = `REVENUE_${currency}`;
 
     const totalFee = (grossAmount * DEFAULT_FEES.PLATFORM_TOTAL_BPS) / BPS_DIVISOR;
     const providerFee = (grossAmount * DEFAULT_FEES.PROVIDER_BPS) / BPS_DIVISOR;
@@ -73,10 +68,7 @@ export class PaymentService {
     const amount = BigInt(dto.amount);
     const currency = dto.currency.toUpperCase();
 
-    const revenueAccountId = await this.bucketingService.getRevenueBucketAccountId(
-      currency,
-      dto.idempotencyKey
-    );
+    const revenueAccountId = `REVENUE_${currency}`;
 
     const payoutFee = DEFAULT_FEES.PAYOUT_FIXED_FEE;
 

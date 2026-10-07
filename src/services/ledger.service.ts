@@ -5,6 +5,7 @@ import { AccountService } from './account.service';
 import { IExecutePaymentCommand } from '../interfaces/execute-payment-command.interface';
 import { IPaymentExecutionResult } from '../interfaces/payment-execution-result.interface';
 import { IPostingInstruction } from '../interfaces/posting-instruction.interface';
+import { LockedAccountRow } from '../interfaces/locked-account-row.interface';
 import type { LedgerConfig } from '../config/ledger.config';
 
 @Injectable()
@@ -93,28 +94,32 @@ export class LedgerService {
     try {
       await queryRunner.query("SELECT set_config('lock_timeout', $1, true)", [`${this.lockTimeoutMs}ms`]);
 
-      // 5. Pessimistic row locking in deterministic sorted order
-      const accounts = await queryRunner.query(
-        `SELECT id, number, currency, balance, allow_negative 
-         FROM accounts 
-         WHERE id = ANY($1::uuid[]) 
-         ORDER BY id ASC 
-         FOR UPDATE`,
-        [sortedAccountIds]
-      );
+      const accounts: LockedAccountRow[] = [];
+      for (const id of sortedAccountIds) {
+        const rows = await queryRunner.query(
+          `SELECT id, number, currency, balance, allow_negative 
+           FROM accounts 
+           WHERE id = $1 
+           FOR UPDATE`,
+          [id]
+        );
+        if (rows.length > 0) {
+          accounts.push(rows[0]);
+        }
+      }
 
       if (accounts.length !== sortedAccountIds.length) {
-        const foundIds = new Set(accounts.map((a: any) => a.id));
+        const foundIds = new Set(accounts.map((a) => a.id));
         const missing = sortedAccountIds.filter((id) => !foundIds.has(id));
         throw new BadRequestException(`Accounts not found: ${missing.join(', ')}`);
       }
 
-      const accountMap = new Map<string, any>(accounts.map((a: any) => [a.id, a]));
+      const accountMap = new Map<string, LockedAccountRow>(accounts.map((a) => [a.id, a]));
 
       // 6. Strict currency consistency check: account currency must match posting currency
       for (const p of normalizedPostings) {
-        const debitAcc = accountMap.get(p.debitAccountId);
-        const creditAcc = accountMap.get(p.creditAccountId);
+        const debitAcc = accountMap.get(p.debitAccountId)!;
+        const creditAcc = accountMap.get(p.creditAccountId)!;
         if (debitAcc.currency !== p.currency) {
           throw new BadRequestException(
             `Currency mismatch on debit account ${debitAcc.number}: account is in ${debitAcc.currency}, posting is in ${p.currency}`

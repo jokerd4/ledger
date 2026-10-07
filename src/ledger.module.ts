@@ -7,7 +7,6 @@ import {
   LedgerService,
   PaymentService,
   AccountService,
-  AccountBucketingService,
   ReconciliationService,
 } from './services';
 import { LedgerController } from './controllers/ledger.controller';
@@ -25,14 +24,12 @@ import { LedgerController } from './controllers/ledger.controller';
     LedgerService,
     PaymentService,
     AccountService,
-    AccountBucketingService,
     ReconciliationService,
   ],
   exports: [
     LedgerService,
     PaymentService,
     AccountService,
-    AccountBucketingService,
     ReconciliationService,
   ],
 })
