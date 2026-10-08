@@ -94,8 +94,18 @@ export class LedgerService {
     try {
       await queryRunner.query("SELECT set_config('lock_timeout', $1, true)", [`${this.lockTimeoutMs}ms`]);
 
+      // 5. Deterministic Deadlock-Free Locking:
+      // Accounts with zero net delta (e.g. transit/clearing REVENUE and PROVIDER in Pay-In) do NOT mutate balance,
+      // so they are read via snapshot (READ COMMITTED) without row locking (zero contention).
+      // All accounts whose balance IS mutated (delta !== 0n) MUST acquire exclusive locks in deterministic ASCII
+      // order (ORDER BY id ASC) to eliminate deadlocks when concurrent bidirectional transfers occur (Golden Rule #4).
+      const accountIdsToLock = sortedAccountIds.filter((id) => (deltas.get(id) ?? 0n) !== 0n);
+      const readOnlyAccountIds = sortedAccountIds.filter((id) => (deltas.get(id) ?? 0n) === 0n);
+
       const accounts: LockedAccountRow[] = [];
-      for (const id of sortedAccountIds) {
+
+      // 5a. Deterministically lock balance-mutating accounts in ASCII order (0% Deadlocks)
+      for (const id of accountIdsToLock) {
         const rows = await queryRunner.query(
           `SELECT id, number, currency, balance, allow_negative 
            FROM accounts 
@@ -103,9 +113,18 @@ export class LedgerService {
            FOR UPDATE`,
           [id]
         );
-        if (rows.length > 0) {
-          accounts.push(rows[0]);
-        }
+        if (rows.length > 0) accounts.push(rows[0]);
+      }
+
+      // 5b. Non-blocking snapshot read for neutral/transit accounts
+      if (readOnlyAccountIds.length > 0) {
+        const readRows: LockedAccountRow[] = await queryRunner.query(
+          `SELECT id, number, currency, balance, allow_negative 
+           FROM accounts 
+           WHERE id = ANY($1::uuid[])`,
+          [readOnlyAccountIds]
+        );
+        accounts.push(...readRows);
       }
 
       if (accounts.length !== sortedAccountIds.length) {
@@ -167,17 +186,20 @@ export class LedgerService {
         [transactionId, seqs, debits, credits, amounts, currencies]
       );
 
-      const updateIds = sortedAccountIds;
-      const updateDeltas = updateIds.map((id) => deltas.get(id)!.toString());
+      // Only accounts with actual non-zero delta require balance mutation
+      const activeDeltaIds = sortedAccountIds.filter((id) => deltas.get(id)! !== 0n);
+      const updateDeltas = activeDeltaIds.map((id) => deltas.get(id)!.toString());
 
-      await queryRunner.query(
-        `UPDATE accounts AS a
-         SET balance = a.balance + v.delta,
-             updated_at = clock_timestamp()
-         FROM (SELECT * FROM UNNEST($1::uuid[], $2::bigint[])) AS v(id, delta)
-         WHERE a.id = v.id`,
-        [updateIds, updateDeltas]
-      );
+      if (activeDeltaIds.length > 0) {
+        await queryRunner.query(
+          `UPDATE accounts AS a
+           SET balance = a.balance + v.delta,
+               updated_at = clock_timestamp()
+           FROM (SELECT * FROM UNNEST($1::uuid[], $2::bigint[])) AS v(id, delta)
+           WHERE a.id = v.id`,
+          [activeDeltaIds, updateDeltas]
+        );
+      }
 
       await queryRunner.commitTransaction();
 

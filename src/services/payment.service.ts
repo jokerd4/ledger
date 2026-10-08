@@ -6,6 +6,7 @@ import { IPaymentExecutionResult } from '../interfaces/payment-execution-result.
 import { IPostingInstruction } from '../interfaces/posting-instruction.interface';
 import { TransactionType } from '../enums/transaction-type.enum';
 import { DEFAULT_FEES, BPS_DIVISOR } from '../constants/fee.constants';
+import { SystemAccountCode, getSystemAccountNumber } from '../constants/system-account.constants';
 
 @Injectable()
 export class PaymentService {
@@ -18,7 +19,10 @@ export class PaymentService {
     const grossAmount = BigInt(dto.amount);
     const currency = dto.currency.toUpperCase();
 
-    const revenueAccountId = `REVENUE_${currency}`;
+    const revenueAccountId = getSystemAccountNumber(SystemAccountCode.REVENUE, currency);
+    const provFeeAccountId = getSystemAccountNumber(SystemAccountCode.PROVIDER_FEE, currency);
+    const rollingReserveAccountId = getSystemAccountNumber(SystemAccountCode.ROLLING_RESERVE, currency);
+    const techFeeAccountId = getSystemAccountNumber(SystemAccountCode.TECH_FEE, currency);
 
     const totalFee = (grossAmount * DEFAULT_FEES.PLATFORM_TOTAL_BPS) / BPS_DIVISOR;
     const providerFee = (grossAmount * DEFAULT_FEES.PROVIDER_BPS) / BPS_DIVISOR;
@@ -35,17 +39,17 @@ export class PaymentService {
       { debitAccountId: dto.payerAccountId, creditAccountId: dto.providerAccountId, amount: grossAmount, currency },
       { debitAccountId: dto.providerAccountId, creditAccountId: dto.merchantAccountId, amount: grossAmount, currency },
       { debitAccountId: dto.merchantAccountId, creditAccountId: revenueAccountId, amount: totalFee, currency },
-      { debitAccountId: revenueAccountId, creditAccountId: `PROV_FEE_${currency}`, amount: providerFee, currency },
-      { debitAccountId: revenueAccountId, creditAccountId: `AFF_PROV_1_${currency}`, amount: affProv1, currency },
-      { debitAccountId: revenueAccountId, creditAccountId: `AFF_PROV_2_${currency}`, amount: affProv2, currency },
-      { debitAccountId: revenueAccountId, creditAccountId: `AFF_MERCH_1_${currency}`, amount: affMerch1, currency },
-      { debitAccountId: revenueAccountId, creditAccountId: `AFF_MERCH_2_${currency}`, amount: affMerch2, currency },
-      { debitAccountId: revenueAccountId, creditAccountId: `NET_INCOME_${currency}`, amount: netIncome, currency },
-      { debitAccountId: dto.merchantAccountId, creditAccountId: `ROLLING_RESERVE_${currency}`, amount: rollingReserve, currency },
-      { debitAccountId: `ROLLING_RESERVE_${currency}`, creditAccountId: `BANK_ESCROW_${currency}`, amount: rollingReserve, currency },
-      { debitAccountId: `PROV_FEE_${currency}`, creditAccountId: `TAX_VAT_${currency}`, amount: vatAmount, currency },
-      { debitAccountId: dto.merchantAccountId, creditAccountId: `TECH_FEE_${currency}`, amount: techFee, currency },
-      { debitAccountId: `TECH_FEE_${currency}`, creditAccountId: `INFRA_CLEARING_${currency}`, amount: techFee, currency },
+      { debitAccountId: revenueAccountId, creditAccountId: provFeeAccountId, amount: providerFee, currency },
+      { debitAccountId: revenueAccountId, creditAccountId: getSystemAccountNumber(SystemAccountCode.AFFILIATE_PROVIDER_1, currency), amount: affProv1, currency },
+      { debitAccountId: revenueAccountId, creditAccountId: getSystemAccountNumber(SystemAccountCode.AFFILIATE_PROVIDER_2, currency), amount: affProv2, currency },
+      { debitAccountId: revenueAccountId, creditAccountId: getSystemAccountNumber(SystemAccountCode.AFFILIATE_MERCHANT_1, currency), amount: affMerch1, currency },
+      { debitAccountId: revenueAccountId, creditAccountId: getSystemAccountNumber(SystemAccountCode.AFFILIATE_MERCHANT_2, currency), amount: affMerch2, currency },
+      { debitAccountId: revenueAccountId, creditAccountId: getSystemAccountNumber(SystemAccountCode.NET_INCOME, currency), amount: netIncome, currency },
+      { debitAccountId: dto.merchantAccountId, creditAccountId: rollingReserveAccountId, amount: rollingReserve, currency },
+      { debitAccountId: rollingReserveAccountId, creditAccountId: getSystemAccountNumber(SystemAccountCode.BANK_ESCROW, currency), amount: rollingReserve, currency },
+      { debitAccountId: provFeeAccountId, creditAccountId: getSystemAccountNumber(SystemAccountCode.TAX_VAT, currency), amount: vatAmount, currency },
+      { debitAccountId: dto.merchantAccountId, creditAccountId: techFeeAccountId, amount: techFee, currency },
+      { debitAccountId: techFeeAccountId, creditAccountId: getSystemAccountNumber(SystemAccountCode.INFRA_CLEARING, currency), amount: techFee, currency },
     ];
 
     const postings: IPostingInstruction[] = rawPostings
@@ -68,8 +72,7 @@ export class PaymentService {
     const amount = BigInt(dto.amount);
     const currency = dto.currency.toUpperCase();
 
-    const revenueAccountId = `REVENUE_${currency}`;
-
+    const revenueAccountId = getSystemAccountNumber(SystemAccountCode.REVENUE, currency);
     const payoutFee = DEFAULT_FEES.PAYOUT_FIXED_FEE;
 
     const rawPostings: Omit<IPostingInstruction, 'sequenceNumber'>[] = [
