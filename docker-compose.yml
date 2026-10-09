@@ -31,6 +31,7 @@ services:
       -c work_mem=16MB
       -c min_wal_size=1GB
       -c max_wal_size=4GB
+      -c lock_timeout=2000ms
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ledger"]
       interval: 5s

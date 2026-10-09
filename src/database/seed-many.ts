@@ -14,6 +14,7 @@ async function seedMany() {
   const dataSource = new DataSource(typeOrmConfig);
   console.log(`Connecting to PostgreSQL via TypeORM at ${process.env.DB_HOST}:${process.env.DB_PORT}...`);
   await dataSource.initialize();
+  await dataSource.query('ALTER TABLE accounts SET (fillfactor = 70);').catch(() => {});
 
   const queryRunner = dataSource.createQueryRunner();
   await queryRunner.connect();

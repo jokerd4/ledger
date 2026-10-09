@@ -28,6 +28,7 @@ export const buildTypeOrmOptions = (
     max: 100,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
+    options: `-c lock_timeout=${process.env.LOCK_TIMEOUT_MS || 2000}ms`,
   },
 });
 

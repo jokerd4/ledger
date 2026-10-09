@@ -4,25 +4,24 @@ High-performance double-entry bookkeeping ledger core.
 
 ## Performance Benchmark
 
-Results of the production `LedgerService` benchmark with Selective & Deterministic Locking enabled:
+Results of the production `LedgerService` benchmark with Selective & Deterministic Locking, Heap-Only Tuple (`fillfactor = 70`), and pool-level lock timeout:
 
 - **Concurrency:** 500 parallel transactions
 - **Load Distribution:** 80% sparse accounts, 20% hot accounts (`PROV_MAIN_USD`)
 - **Success Rate:** 100% (500/500, 0 Deadlocks, 0 Errors)
-- **Real TPS:** 568 tx/s
-- **Wall-Clock Time:** 880.2 ms
-- **Latency (p50):** 545.9 ms
-- **Latency (p90):** 756.3 ms
-- **Latency (p99):** 863.3 ms
-- **Latency (Max):** 872.7 ms (Hot account lock queue wait)
+- **Real TPS:** 581 tx/s
+- **Wall-Clock Time:** 859.5 ms
+- **Latency (p50):** 506.3 ms
+- **Latency (p90):** 736.3 ms
+- **Latency (p99):** 848.0 ms
+- **Latency (Max):** 853.7 ms
+- **Hot Account (`PROV_MAIN_USD`):** 103 tx, Avg Latency: 675.68 ms, Max Latency: 853.67 ms
 
-### High-Contention Benchmark (2 Accounts Only)
+### High-Contention Benchmark (2 Accounts Only — HTTP API)
 
-When testing extreme contention where all 500 parallel transactions hit the exact same two accounts simultaneously (`Alice` ↔ `Bob`):
-- **Success Rate:** 100% (500/500)
-- **Lock Wait Time:** Up to 2,091 ms
-- **Database Total Tx Time:** Heavily dominated by Row-Level Locks (>99% of tx time)
-- **Deadlocks:** 0 (Deterministic sort `ORDER BY id ASC` completely prevents circular locks)
+When testing extreme contention where all 500 parallel transactions hit the exact same two accounts simultaneously (`Alice` ↔ `Bob`) via HTTP:
+- **Success Rate:** 100% (500/500, 0 deadlocks/timeouts, 0 other errors)
+- **Latencies (ms):** Avg: 822.9 ms | p50: 835.1 ms | p90: 1393.0 ms | p99: 1520.1 ms | Max: 1530.0 ms
 
 ## Quick Start
 

@@ -92,9 +92,7 @@ export class LedgerService {
     await queryRunner.startTransaction('READ COMMITTED');
 
     try {
-      await queryRunner.query("SELECT set_config('lock_timeout', $1, true)", [`${this.lockTimeoutMs}ms`]);
-
-      // 5. Deterministic Deadlock-Free Locking:
+      // 5. Deterministic Deadlock-Free Locking (lock_timeout configured globally at connection pool level):
       // Accounts with zero net delta (e.g. transit/clearing REVENUE and PROVIDER in Pay-In) do NOT mutate balance,
       // so they are read via snapshot (READ COMMITTED) without row locking (zero contention).
       // All accounts whose balance IS mutated (delta !== 0n) MUST acquire exclusive locks in deterministic ASCII
