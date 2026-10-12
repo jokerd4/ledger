@@ -4,24 +4,20 @@ High-performance double-entry bookkeeping ledger core.
 
 ## Performance Benchmark
 
-Results of the production `LedgerService` benchmark with Selective & Deterministic Locking, Heap-Only Tuple (`fillfactor = 70`), and pool-level lock timeout:
+- **Duration:** 300.45 s (5-minute sustained endurance run)
+- **Concurrency:** 1,000 parallel workers in flight
+- **Traffic Distribution:** 80% sparse accounts, 20% hot account (`PROV_MAIN_USD`)
+- **Total Transactions:** 523,466
+- **Success Rate:** 100% (523,466 success, 0 errors, 0 deadlocks)
+- **Real Sustained TPS:** 1,742 tx/s
+- **Global Latency:**
+  - **p50:** 554.4 ms
+  - **p90:** 641.7 ms
+  - **p99:** 959.0 ms
+  - **Max:** 1,254.4 ms
+- **Hot Account (`PROV_MAIN_USD`):** 104,718 tx, Avg Latency: 576.86 ms, Max Latency: 1,254.44 ms
 
-- **Concurrency:** 500 parallel transactions
-- **Load Distribution:** 80% sparse accounts, 20% hot accounts (`PROV_MAIN_USD`)
-- **Success Rate:** 100% (500/500, 0 Deadlocks, 0 Errors)
-- **Real TPS:** 581 tx/s
-- **Wall-Clock Time:** 859.5 ms
-- **Latency (p50):** 506.3 ms
-- **Latency (p90):** 736.3 ms
-- **Latency (p99):** 848.0 ms
-- **Latency (Max):** 853.7 ms
-- **Hot Account (`PROV_MAIN_USD`):** 103 tx, Avg Latency: 675.68 ms, Max Latency: 853.67 ms
-
-### High-Contention Benchmark (2 Accounts Only — HTTP API)
-
-When testing extreme contention where all 500 parallel transactions hit the exact same two accounts simultaneously (`Alice` ↔ `Bob`) via HTTP:
-- **Success Rate:** 100% (500/500, 0 deadlocks/timeouts, 0 other errors)
-- **Latencies (ms):** Avg: 822.9 ms | p50: 835.1 ms | p90: 1393.0 ms | p99: 1520.1 ms | Max: 1530.0 ms
+---
 
 ## Quick Start
 
@@ -32,21 +28,26 @@ bun install
 
 2. Start PostgreSQL:
 ```bash
-docker-compose up -d
+bun run db:up
 ```
 
-3. Seed standard domain accounts and 10,000 randomized test accounts:
+3. Seed system domain accounts and test client accounts:
 ```bash
-bun run src/database/seed.ts
+bun run seed
 bun run src/database/seed-many.ts
 ```
 
-4. Run the Hot Accounts performance benchmark:
+4. Start background transaction worker:
 ```bash
-bun run src/ledger.benchmark.many.ts
+bun run start:worker:dev
 ```
 
-5. Start the API server (Swagger UI at `http://localhost:3000/api/docs`):
+5. Start API server (Swagger UI at `http://localhost:3000/api/docs`):
 ```bash
 bun run start:dev
+```
+
+6. Run sustained endurance benchmark (5 minutes, 1,000 workers):
+```bash
+bun run src/ledger.benchmark.many.ts 300 1000
 ```

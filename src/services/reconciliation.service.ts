@@ -11,25 +11,30 @@ export class ReconciliationService {
   // Reconciles materialized balances against posting history
   async runAudit(): Promise<IReconciliationReport> {
     const query = `
+      WITH posting_deltas AS (
+        SELECT 
+          v.account_id,
+          SUM(v.delta) AS net_delta
+        FROM ledger_postings p
+        JOIN ledger_transactions t ON t.id = p.transaction_id
+        CROSS JOIN LATERAL (
+          VALUES 
+            (p.credit_account_id, p.amount),
+            (p.debit_account_id, -p.amount)
+        ) AS v(account_id, delta)
+        WHERE t.status = 'POSTED'
+        GROUP BY v.account_id
+      )
       SELECT 
         a.id, 
         a.number,
         a.currency,
         a.balance::text AS stored_balance,
-        (COALESCE(c.credits_sum, 0) - COALESCE(d.debits_sum, 0))::text AS calculated_balance,
-        (a.balance - (COALESCE(c.credits_sum, 0) - COALESCE(d.debits_sum, 0)))::text AS discrepancy
+        COALESCE(pd.net_delta, 0)::text AS calculated_balance,
+        (a.balance - COALESCE(pd.net_delta, 0))::text AS discrepancy
       FROM accounts a
-      LEFT JOIN (
-        SELECT credit_account_id, SUM(amount) AS credits_sum 
-        FROM ledger_postings 
-        GROUP BY credit_account_id
-      ) c ON a.id = c.credit_account_id
-      LEFT JOIN (
-        SELECT debit_account_id, SUM(amount) AS debits_sum 
-        FROM ledger_postings 
-        GROUP BY debit_account_id
-      ) d ON a.id = d.debit_account_id
-      WHERE a.balance != (COALESCE(c.credits_sum, 0) - COALESCE(d.debits_sum, 0));
+      LEFT JOIN posting_deltas pd ON a.id = pd.account_id
+      WHERE a.balance != COALESCE(pd.net_delta, 0);
     `;
 
     const countRows = await this.dataSource.query('SELECT COUNT(*)::int AS count FROM accounts');

@@ -21,6 +21,13 @@ async function seed() {
   console.log(`Connecting to PostgreSQL via TypeORM at ${process.env.DB_HOST}:${process.env.DB_PORT}...`);
   await dataSource.initialize();
   await dataSource.query('ALTER TABLE accounts SET (fillfactor = 70);').catch(() => {});
+  
+  const fs = await import('fs');
+  const path = await import('path');
+  try {
+    const procedureSql = fs.readFileSync(path.join(__dirname, 'procedure.sql'), 'utf-8');
+    await dataSource.query(procedureSql);
+  } catch {}
 
   const accountRepository = dataSource.getRepository(AccountEntity);
   const txRepository = dataSource.getRepository(LedgerTransactionEntity);

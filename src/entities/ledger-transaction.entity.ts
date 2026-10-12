@@ -21,7 +21,7 @@ export class LedgerTransactionEntity {
   @Column({ type: 'varchar', length: 32 })
   type: TransactionType | string;
 
-  @Column({ type: 'varchar', length: 32, default: TransactionStatus.POSTED })
+  @Column({ type: 'varchar', length: 32, default: TransactionStatus.PROCESSING })
   status: TransactionStatus | string;
 
   @Column({ type: 'text', nullable: true })

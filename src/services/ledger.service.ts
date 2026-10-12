@@ -1,26 +1,18 @@
-import { Injectable, BadRequestException, ConflictException, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { DataSource, QueryRunner } from 'typeorm';
 import { AccountService } from './account.service';
 import { IExecutePaymentCommand } from '../interfaces/execute-payment-command.interface';
 import { IPaymentExecutionResult } from '../interfaces/payment-execution-result.interface';
 import { IPostingInstruction } from '../interfaces/posting-instruction.interface';
-import { LockedAccountRow } from '../interfaces/locked-account-row.interface';
-import type { LedgerConfig } from '../config/ledger.config';
 
 @Injectable()
 export class LedgerService {
   private readonly logger = new Logger(LedgerService.name);
-  private readonly lockTimeoutMs: number;
 
   constructor(
     private readonly dataSource: DataSource,
     private readonly accountService: AccountService,
-    private readonly configService: ConfigService,
-  ) {
-    this.lockTimeoutMs =
-      this.configService.get<LedgerConfig>('ledger')?.lockTimeoutMs!;
-  }
+  ) {}
 
   // Executes a batch of double-entry postings with ACID guarantees, overdraft control, currency consistency, and deadlock prevention.
   async executeTransaction(command: IExecutePaymentCommand): Promise<IPaymentExecutionResult> {
@@ -84,89 +76,15 @@ export class LedgerService {
       throw new BadRequestException(`Double-entry invariant violated: sum of deltas is ${deltaSum}, expected 0`);
     }
 
-    // 4. Sort account IDs deterministically (ASCII byte order) to eliminate deadlocks
-    const sortedAccountIds = Array.from(deltas.keys()).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-
+    // 4. Atomic insertion of transaction in PROCESSING status and its postings
     const queryRunner: QueryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction('READ COMMITTED');
 
     try {
-      // 5. Deterministic Deadlock-Free Locking (lock_timeout configured globally at connection pool level):
-      // Accounts with zero net delta (e.g. transit/clearing REVENUE and PROVIDER in Pay-In) do NOT mutate balance,
-      // so they are read via snapshot (READ COMMITTED) without row locking (zero contention).
-      // All accounts whose balance IS mutated (delta !== 0n) MUST acquire exclusive locks in deterministic ASCII
-      // order (ORDER BY id ASC) to eliminate deadlocks when concurrent bidirectional transfers occur (Golden Rule #4).
-      const accountIdsToLock = sortedAccountIds.filter((id) => (deltas.get(id) ?? 0n) !== 0n);
-      const readOnlyAccountIds = sortedAccountIds.filter((id) => (deltas.get(id) ?? 0n) === 0n);
-
-      const accounts: LockedAccountRow[] = [];
-
-      // 5a. Deterministically lock balance-mutating accounts in ASCII order (0% Deadlocks)
-      for (const id of accountIdsToLock) {
-        const rows = await queryRunner.query(
-          `SELECT id, number, currency, balance, allow_negative 
-           FROM accounts 
-           WHERE id = $1 
-           FOR UPDATE`,
-          [id]
-        );
-        if (rows.length > 0) accounts.push(rows[0]);
-      }
-
-      // 5b. Non-blocking snapshot read for neutral/transit accounts
-      if (readOnlyAccountIds.length > 0) {
-        const readRows: LockedAccountRow[] = await queryRunner.query(
-          `SELECT id, number, currency, balance, allow_negative 
-           FROM accounts 
-           WHERE id = ANY($1::uuid[])`,
-          [readOnlyAccountIds]
-        );
-        accounts.push(...readRows);
-      }
-
-      if (accounts.length !== sortedAccountIds.length) {
-        const foundIds = new Set(accounts.map((a) => a.id));
-        const missing = sortedAccountIds.filter((id) => !foundIds.has(id));
-        throw new BadRequestException(`Accounts not found: ${missing.join(', ')}`);
-      }
-
-      const accountMap = new Map<string, LockedAccountRow>(accounts.map((a) => [a.id, a]));
-
-      // 6. Strict currency consistency check: account currency must match posting currency
-      for (const p of normalizedPostings) {
-        const debitAcc = accountMap.get(p.debitAccountId)!;
-        const creditAcc = accountMap.get(p.creditAccountId)!;
-        if (debitAcc.currency !== p.currency) {
-          throw new BadRequestException(
-            `Currency mismatch on debit account ${debitAcc.number}: account is in ${debitAcc.currency}, posting is in ${p.currency}`
-          );
-        }
-        if (creditAcc.currency !== p.currency) {
-          throw new BadRequestException(
-            `Currency mismatch on credit account ${creditAcc.number}: account is in ${creditAcc.currency}, posting is in ${p.currency}`
-          );
-        }
-      }
-
-      // 7. Overdraft protection check
-      for (const acc of accounts) {
-        const delta = deltas.get(acc.id)!;
-        const currentBalance = BigInt(acc.balance);
-        const newBalance = currentBalance + delta;
-
-        if (newBalance < 0n && !acc.allow_negative) {
-          throw new BadRequestException(
-            `Insufficient funds on account ${acc.number} (${acc.id}). ` +
-            `Current balance: ${currentBalance}, required delta: ${delta}, projected: ${newBalance}`
-          );
-        }
-      }
-
-      // 8. Atomic batch execution
       const txRows = await queryRunner.query(
         `INSERT INTO ledger_transactions (idempotency_key, type, status, description)
-         VALUES ($1, $2, 'POSTED', $3)
+         VALUES ($1, $2, 'PROCESSING', $3)
          RETURNING id, status`,
         [command.idempotencyKey, command.transactionType, command.description ?? null]
       );
@@ -184,39 +102,18 @@ export class LedgerService {
         [transactionId, seqs, debits, credits, amounts, currencies]
       );
 
-      // Only accounts with actual non-zero delta require balance mutation
-      const activeDeltaIds = sortedAccountIds.filter((id) => deltas.get(id)! !== 0n);
-      const updateDeltas = activeDeltaIds.map((id) => deltas.get(id)!.toString());
-
-      if (activeDeltaIds.length > 0) {
-        await queryRunner.query(
-          `UPDATE accounts AS a
-           SET balance = a.balance + v.delta,
-               updated_at = clock_timestamp()
-           FROM (SELECT * FROM UNNEST($1::uuid[], $2::bigint[])) AS v(id, delta)
-           WHERE a.id = v.id`,
-          [activeDeltaIds, updateDeltas]
-        );
-      }
-
       await queryRunner.commitTransaction();
 
       return {
         transactionId,
-        status: 'POSTED',
+        status: 'PROCESSING',
         idempotencyKey: command.idempotencyKey,
         isCached: false,
         postingsCount: normalizedPostings.length,
-        affectedAccountsCount: sortedAccountIds.length,
+        affectedAccountsCount: deltas.size,
       };
-
     } catch (error: any) {
       await queryRunner.rollbackTransaction();
-
-      // Handle lock timeout error from PostgreSQL
-      if (error.code === '55P03') {
-        throw new ConflictException('Transaction lock acquisition timed out due to high concurrency. Please retry.');
-      }
 
       // Handle race condition for concurrent requests with identical idempotency_key
       if (error.code === '23505' && error.constraint === 'uq_tx_idempotency') {
